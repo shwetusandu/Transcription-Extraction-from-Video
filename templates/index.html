@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Transcription Extraction from Video</title>
+  <style>
+    :root {
+      --bg: #0f1115;
+      --panel: #171b22;
+      --text: #eef2ff;
+      --muted: #a8b0c5;
+      --border: #2b3140;
+      --danger-bg: #3a191d;
+      --danger-text: #ffb4c0;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 24px;
+      font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--text);
+      background: radial-gradient(circle at 20% 10%, #1e232e, #0f1115 60%);
+    }
+
+    .container {
+      max-width: 980px;
+      margin: 0 auto;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+      box-shadow: 0 12px 38px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 { margin: 0 0 14px; font-size: 40px; }
+    p { margin: 0 0 18px; color: var(--muted); }
+
+    form {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    input[type="url"] {
+      background: #0e1218;
+      color: var(--text);
+      border: 1px solid #30384a;
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 15px;
+    }
+
+    button {
+      border: none;
+      border-radius: 10px;
+      background: #16a34a;
+      color: #fff;
+      padding: 12px 16px;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 600;
+      min-width: 140px;
+    }
+    button:disabled { opacity: 0.75; cursor: not-allowed; }
+
+    .error {
+      display: none;
+      border-left: 4px solid #ef4444;
+      background: var(--danger-bg);
+      color: var(--danger-text);
+      padding: 10px 12px;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      white-space: pre-wrap;
+    }
+
+    .progress-label {
+      display: none;
+      font-size: 18px;
+      color: #d9dfef;
+      margin: 6px 0 10px;
+      text-align: center;
+    }
+
+    .step-label {
+      display: none;
+      font-size: 15px;
+      color: #c4d1ee;
+      margin-bottom: 8px;
+      text-align: center;
+    }
+
+    .progress-shell {
+      display: none;
+      border: 4px solid #3a3f4b;
+      border-radius: 28px;
+      padding: 6px;
+      background: #191d24;
+      box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.55);
+      margin-bottom: 14px;
+    }
+
+    .progress-track {
+      height: 30px;
+      width: 100%;
+      border-radius: 20px;
+      background: linear-gradient(90deg, #080d12 0%, #1d2431 100%);
+      overflow: hidden;
+      position: relative;
+    }
+
+    .progress-fill {
+      height: 100%;
+      width: 0%;
+      border-radius: 20px;
+      background: linear-gradient(90deg, #0f8a28 0%, #d7e519 55%, #f8ff70 100%);
+      box-shadow: 0 0 14px rgba(197, 255, 44, 0.75), 0 0 30px rgba(31, 161, 30, 0.45);
+      transition: width 0.4s ease;
+    }
+
+    .card {
+      display: none;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 16px;
+      background: #11161f;
+      white-space: pre-wrap;
+      line-height: 1.5;
+    }
+
+    .card h3 { margin: 0 0 10px; color: #f4f7ff; }
+
+    @media (max-width: 680px) {
+      form { grid-template-columns: 1fr; }
+      button { width: 100%; }
+      h1 { font-size: 32px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Transcription Extraction from Video</h1>
+    <p>Paste a YouTube or Instagram link to extract audio, transcribe it, and generate a detailed Q&A summary.</p>
+
+    <div id="errorBox" class="error"></div>
+
+    <form id="processForm">
+      <input
+        id="sourceUrl"
+        type="url"
+        name="source_url"
+        placeholder="https://www.youtube.com/watch?v=... or https://www.instagram.com/reel/..."
+        required
+      >
+      <button id="processBtn" type="submit">Process Video</button>
+    </form>
+
+    <div id="progressLabel" class="progress-label">Progress 0%</div>
+    <div id="stepLabel" class="step-label">Queued</div>
+    <div id="progressShell" class="progress-shell">
+      <div class="progress-track">
+        <div id="progressFill" class="progress-fill"></div>
+      </div>
+    </div>
+
+    <div id="descriptionCard" class="card">
+      <h3>Video/Reel Description</h3>
+      <div id="descriptionContent"></div>
+    </div>
+
+    <div id="transcriptCard" class="card">
+      <h3>Transcript</h3>
+      <div id="transcriptContent"></div>
+    </div>
+
+    <div id="summaryCard" class="card">
+      <h3>Detailed Q&A Summary</h3>
+      <div id="summaryContent"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("processForm");
+    const sourceUrl = document.getElementById("sourceUrl");
+    const button = document.getElementById("processBtn");
+    const errorBox = document.getElementById("errorBox");
+    const progressLabel = document.getElementById("progressLabel");
+    const stepLabel = document.getElementById("stepLabel");
+    const progressShell = document.getElementById("progressShell");
+    const progressFill = document.getElementById("progressFill");
+    const descriptionCard = document.getElementById("descriptionCard");
+    const transcriptCard = document.getElementById("transcriptCard");
+    const summaryCard = document.getElementById("summaryCard");
+    const descriptionContent = document.getElementById("descriptionContent");
+    const transcriptContent = document.getElementById("transcriptContent");
+    const summaryContent = document.getElementById("summaryContent");
+
+    function showError(msg) {
+      errorBox.textContent = msg;
+      errorBox.style.display = "block";
+    }
+
+    function clearError() {
+      errorBox.style.display = "none";
+      errorBox.textContent = "";
+    }
+
+    function resetResults() {
+      descriptionCard.style.display = "none";
+      transcriptCard.style.display = "none";
+      summaryCard.style.display = "none";
+      descriptionContent.textContent = "";
+      transcriptContent.textContent = "";
+      summaryContent.textContent = "";
+    }
+
+    function setProgress(progress, step) {
+      const p = Math.max(0, Math.min(100, Number(progress || 0)));
+      progressLabel.textContent = `Progress ${p}%`;
+      stepLabel.textContent = step || "Processing...";
+      progressFill.style.width = `${p}%`;
+    }
+
+    async function pollStatus(jobId) {
+      const timer = setInterval(async () => {
+        try {
+          const res = await fetch(`/status/${jobId}`);
+          const data = await res.json();
+          if (!data.ok) {
+            clearInterval(timer);
+            button.disabled = false;
+            button.textContent = "Process Video";
+            showError(data.error || "Failed to fetch job status.");
+            return;
+          }
+
+          setProgress(data.progress, data.step);
+
+          if (data.state === "completed") {
+            clearInterval(timer);
+            button.disabled = false;
+            button.textContent = "Process Video";
+            setProgress(100, "Completed");
+
+            if (data.video_description) {
+              descriptionCard.style.display = "block";
+              descriptionContent.textContent = data.video_description;
+            }
+            transcriptCard.style.display = "block";
+            summaryCard.style.display = "block";
+            transcriptContent.textContent = data.transcript || "";
+            summaryContent.textContent = data.qa_summary || "";
+          } else if (data.state === "error") {
+            clearInterval(timer);
+            button.disabled = false;
+            button.textContent = "Process Video";
+            showError(data.error || "Processing failed.");
+          }
+        } catch (err) {
+          clearInterval(timer);
+          button.disabled = false;
+          button.textContent = "Process Video";
+          showError("Network error while checking progress.");
+        }
+      }, 900);
+    }
+
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      clearError();
+      resetResults();
+
+      const url = sourceUrl.value.trim();
+      if (!url) {
+        showError("Please enter a YouTube or Instagram link.");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "Starting...";
+      progressLabel.style.display = "block";
+      stepLabel.style.display = "block";
+      progressShell.style.display = "block";
+      setProgress(2, "Queued");
+
+      try {
+        const res = await fetch("/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ source_url: url }),
+        });
+        const data = await res.json();
+        if (!data.ok) {
+          button.disabled = false;
+          button.textContent = "Process Video";
+          showError(data.error || "Unable to start processing.");
+          return;
+        }
+
+        button.textContent = "Processing...";
+        pollStatus(data.job_id);
+      } catch (err) {
+        button.disabled = false;
+        button.textContent = "Process Video";
+        showError("Network error while starting processing.");
+      }
+    });
+  </script>
+</body>
+</html>

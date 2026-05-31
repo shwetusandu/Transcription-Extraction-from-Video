@@ -1,0 +1,13 @@
+Flask==3.0.3
+yt-dlp
+openai-whisper==20250625
+openai>=1.40.0
+python-dotenv>=1.0.1
+gspread
+google-auth
+oauth2client
+moviepy
+requests
+flask-cors
+gunicorn
+ffmpeg-python
