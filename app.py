@@ -13,6 +13,8 @@ from dotenv import dotenv_values, load_dotenv
 from yt_dlp import YoutubeDL
 from yt_dlp.utils import DownloadError
 from google_sheets import write_to_google_sheet
+from youtube_auth import build_youtube_ydl_opts
+from instagram_auth import build_instagram_ydl_opts
 
 BASE_DIR = Path(__file__).resolve().parent
 load_dotenv(BASE_DIR / ".env", override=True)
@@ -49,59 +51,21 @@ def sanitize_error_message(message: str) -> str:
     return ANSI_ESCAPE_RE.sub("", message or "").strip()
 
 # -------------------------------------------------------------
-# Google Sheets Configuration and Functions
-# -------------------------------------------------------------
-def get_cookies_from_browser():
-    # If a cookie file is configured, prefer it and skip browser-cookie mode.
-    if get_cookies_file():
-        return None
-    browser = os.getenv("YTDLP_COOKIES_FROM_BROWSER", "").strip().lower()
-    if browser in {"chrome", "edge", "firefox", "brave", "chromium", "opera", "vivaldi"}:
-        return (browser,)
-    return None
-
-# ------------------------------------------------------------- 
-# Get the cookies file path from environment variable if set and valid
-# -------------------------------------------------------------
-def get_cookies_file() -> str:
-    cookies_file = os.getenv("YTDLP_COOKIES_FILE", "").strip()
-    if not cookies_file:
-        return ""
-    expanded = os.path.expandvars(cookies_file)
-    expanded = os.path.expanduser(expanded)
-    return expanded if Path(expanded).exists() else ""
-
-# -------------------------------------------------------------
 # Build yt-dlp options based on environment variables and defaults
 # -------------------------------------------------------------
-def build_ydl_opts(output_template: str = "", skip_download: bool = False) -> dict:
-    opts = {
-        "format": "bestaudio/best",
-        "noplaylist": True,
-        "quiet": True,
-        "no_warnings": True,
-        "retries": 5,
-        "extractor_retries": 3,
-        "http_headers": {
-            "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/125.0.0.0 Safari/537.36"
-            )
-        },
-    }
+def build_ydl_opts(url: str, output_template: str = "", skip_download: bool = False):
+    
+    if "instagram.com" in url.lower():
+        opts = build_instagram_ydl_opts()
+    else:
+        opts = build_youtube_ydl_opts()
+
     if output_template:
         opts["outtmpl"] = output_template
+
     if skip_download:
         opts["skip_download"] = True
 
-    cookies_file = get_cookies_file()
-    if cookies_file:
-        opts["cookiefile"] = cookies_file
-    else:
-        cookies = get_cookies_from_browser()
-        if cookies:
-            opts["cookiesfrombrowser"] = cookies
     return opts
 
 # -------------------------------------------------------------
@@ -111,8 +75,12 @@ def humanize_download_error(err: Exception, source_url: str = "") -> str:
     text = sanitize_error_message(str(err)).lower()
 
     is_instagram = "instagram.com" in source_url.lower()
+    is_youtube = (
+        "youtube.com" in source_url.lower()
+        or "youtu.be" in source_url.lower()
+    )
 
-    # Instagram authentication issue
+    # Instagram Authentication Errors
     if is_instagram and (
         "accounts/login" in text
         or "login required" in text
@@ -120,21 +88,33 @@ def humanize_download_error(err: Exception, source_url: str = "") -> str:
         or "cookies" in text
     ):
         return (
-            "This Instagram link requires login. "
-            "Set YTDLP_COOKIES_FROM_BROWSER to your browser name "
-            "(for example: chrome) and try again."
+            "This Instagram Reel requires authentication. "
+            "Add a valid Instagram cookies file using "
+            "YTDLP_COOKIES_FILE_INSTAGRAM and try again."
         )
 
-    # YouTube / generic forbidden issue
-    if "http error 403" in text or "forbidden" in text:
+    # YouTube Authentication / Bot Detection Errors
+    if is_youtube and (
+        "sign in to confirm you're not a bot" in text
+        or "use --cookies-from-browser" in text
+        or "cookies" in text
+        or "http error 403" in text
+        or "forbidden" in text
+    ):
         return (
-            "The source blocked direct download (HTTP 403). "
-            "Update yt-dlp and retry."
+            "YouTube blocked automated access for this video. "
+            "Add a valid YouTube cookies file using "
+            "YTDLP_COOKIES_FILE_YOUTUBE and try again."
         )
 
+    # Unsupported URL
     if "unsupported url" in text:
-        return "Unsupported or private link. Use a public YouTube or Instagram Reel URL."
-
+        return (
+            "Unsupported or private link. "
+            "Use a public YouTube or Instagram Reel URL."
+        )
+    
+    # Default Error
     return sanitize_error_message(str(err))
 
 # -------------------------------------------------------------
@@ -203,7 +183,8 @@ def download_audio(url: str, job_id: str) -> Path:
         elif status == "finished":
             update_job(job_id, progress=62, step="Finalizing extracted audio...")
 
-    ydl_opts = build_ydl_opts(output_template=output_template)
+    ydl_opts = build_ydl_opts(url=url, output_template=output_template)
+
     ydl_opts["postprocessors"] = [
         {
             "key": "FFmpegExtractAudio",
@@ -243,7 +224,7 @@ def download_audio(url: str, job_id: str) -> Path:
 # Extract video description using yt-dlp
 # -------------------------------------------------------------
 def extract_video_description(url: str) -> str:
-    ydl_opts = build_ydl_opts(skip_download=True)
+    ydl_opts = build_ydl_opts(url=url, skip_download=True)
     try:
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)

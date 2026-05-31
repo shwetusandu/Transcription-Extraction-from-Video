@@ -5,3 +5,5 @@ __pycache__/
 downloads/*
 !downloads/.gitkeep
 service_account.json
+youtube_cookies.txt
+instagram_cookies.txt
