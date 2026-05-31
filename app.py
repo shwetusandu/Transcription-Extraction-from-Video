@@ -107,20 +107,34 @@ def build_ydl_opts(output_template: str = "", skip_download: bool = False) -> di
 # -------------------------------------------------------------
 # Humanize yt-dlp download errors for better user feedback
 # -------------------------------------------------------------
-def humanize_download_error(err: Exception) -> str:
+def humanize_download_error(err: Exception, source_url: str = "") -> str:
     text = sanitize_error_message(str(err)).lower()
-    if "accounts/login" in text or "login required" in text or "authentication" in text:
+
+    is_instagram = "instagram.com" in source_url.lower()
+
+    # Instagram authentication issue
+    if is_instagram and (
+        "accounts/login" in text
+        or "login required" in text
+        or "please log in" in text
+        or "cookies" in text
+    ):
         return (
-            "This Instagram link requires login. Set YTDLP_COOKIES_FROM_BROWSER "
-            "to your browser name (for example: chrome) and try again."
+            "This Instagram link requires login. "
+            "Set YTDLP_COOKIES_FROM_BROWSER to your browser name "
+            "(for example: chrome) and try again."
         )
+
+    # YouTube / generic forbidden issue
     if "http error 403" in text or "forbidden" in text:
         return (
-            "The source blocked direct download (HTTP 403). Update yt-dlp and retry. "
-            "If it still fails, set YTDLP_COOKIES_FROM_BROWSER=chrome and try again."
+            "The source blocked direct download (HTTP 403). "
+            "Update yt-dlp and retry."
         )
+
     if "unsupported url" in text:
-        return "Unsupported or private link. Use a public YouTube/Instagram video or reel URL."
+        return "Unsupported or private link. Use a public YouTube or Instagram Reel URL."
+
     return sanitize_error_message(str(err))
 
 # -------------------------------------------------------------
@@ -215,9 +229,9 @@ def download_audio(url: str, job_id: str) -> Path:
                 with YoutubeDL(ydl_opts_no_cookies) as ydl:
                     ydl.download([url])
             except DownloadError as err2:
-                raise RuntimeError(humanize_download_error(err2)) from err2
+                raise RuntimeError(humanize_download_error(err2, url)) from err2
         else:
-            raise RuntimeError(humanize_download_error(err)) from err
+            raise RuntimeError(humanize_download_error(err, url)) from err
 
     mp3_path = DOWNLOADS_DIR / f"ExtractedAudio_{media_id}.mp3"
     if not mp3_path.exists():
