@@ -37,4 +37,3 @@ def build_youtube_ydl_opts():
         opts["cookiefile"] = cookie_file
 
     return opts
-```
