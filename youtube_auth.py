@@ -16,12 +16,16 @@ def get_youtube_cookie_file():
 
 def build_youtube_ydl_opts():
     opts = {
-        "format": "bestaudio/best",
+        "format": "bestaudio[ext=m4a]/bestaudio/best",
         "noplaylist": True,
         "quiet": True,
         "no_warnings": True,
         "retries": 5,
         "extractor_retries": 3,
+        "extract_flat": False,
+        "geo_bypass": True,
+        "nocheckcertificate": True,
+        "ignoreerrors": False,
         "http_headers": {
             "User-Agent": (
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "

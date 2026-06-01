@@ -1,5 +1,5 @@
 Flask==3.0.3
-yt-dlp
+yt-dlp>=2025.5.22
 openai-whisper==20250625
 openai>=1.40.0
 python-dotenv>=1.0.1
